@@ -1,13 +1,15 @@
 from collections import deque
 import random, re
 
+
 class Board:
     def __init__(self, dim_size, num_bombs) -> None:
         self.dim_size = dim_size
         self.num_bombs = num_bombs
         self.board = self.make_new_board()
         self.assign_values_to_board()
-        self.dug = set() # it will keep track of dug location like (0,0) etc.
+        self.dug = set()  # it will keep track of dug location like (0,0) etc.
+        self.flagged = set()  # it will keep track of flagged bomb locations like (0,0) etc.
         self.visible_board = [[' ' for _ in range(self.dim_size)] for _ in range(self.dim_size)]
 
     def make_new_board(self):
@@ -65,30 +67,28 @@ class Board:
         return num_neighboring_bombs
 
     def dig(self, row, col):
-        # Recursive Call
-        # self.dug.add((row,col))
+        """Dig at (row,col). Retourne un dict:
+            { 'safe': bool, 'dug': [(r,c),...], 'won': bool }
+        Si une bombe est touchée, 'safe' sera False et 'dug' contiendra toutes les cases révélées pour affichage.
+        """
+        # validate coords
+        if row < 0 or row >= self.dim_size or col < 0 or col >= self.dim_size:
+            return {'safe': True, 'dug': [], 'won': self.is_won()}  # nothing happens
 
-        # if self.board[row][col] == '*':# you dig the bomb
-        #     return False
-        # elif self.board[row][col] > 0:# there is neighboring bomb -> finish dig
-        #     return True
-        
-        # # no neighboring bomb, dig recursively until there is one
-        # for r in range(max(0, row-1), min(self.dim_size-1, (row+1))+1):
-        #     for c in range(max(0, col-1), min(self.dim_size-1, (col+1))+1):
-        #         if (r,c) in self.dug:
-        #             continue # don't dig where you've already dug
-        
-        #         self.dig(r,c)
-                
-        # return True
+        # if already dug, nothing to do
+        if (row, col) in self.dug:
+            return {'safe': True, 'dug': [], 'won': self.is_won()}
 
-
-        # Queue for BFS
+        # If bomb
         if self.board[row][col] == '*':
-            return False #you dig a bomb
-        
+            # reveal everything
+            all_cells = [(r, c) for r in range(self.dim_size) for c in range(self.dim_size)]
+            # set dug to all so get_view reveals bombs
+            self.dug.update(all_cells)
+            return {'safe': False, 'dug': all_cells, 'won': False}
 
+        # Otherwise, BFS reveal
+        prev_dug = set(self.dug)
         queue = deque([(row, col)])
 
         while queue:
@@ -96,21 +96,66 @@ class Board:
 
             if (r, c) in self.dug:
                 continue
-            
+
             self.dug.add((r, c))
-            
+
             if self.board[r][c] == 0:
                 for dr in range(-1, 2):
                     for dc in range(-1, 2):
                         nr, nc = r + dr, c + dc
                         if 0 <= nr < self.dim_size and 0 <= nc < self.dim_size:
-                            queue.append((nr, nc))
+                            if (nr, nc) not in self.dug:
+                                queue.append((nr, nc))
 
-        return True
-    
+        newly_dug = list(self.dug - prev_dug)
+        won = self.is_won()
+        return {'safe': True, 'dug': newly_dug, 'won': won}
+
+    def toggle_flag(self, row, col):
+        """Toggle flag. Retourne dict: { 'flagged': bool, 'coord': (row,col) }"""
+        if row < 0 or row >= self.dim_size or col < 0 or col >= self.dim_size:
+            return {'flagged': False, 'coord': (row, col)}
+        if (row, col) in self.dug:
+            return {'flagged': False, 'coord': (row, col)}
+        if (row, col) in self.flagged:
+            self.flagged.remove((row, col))
+            return {'flagged': False, 'coord': (row, col)}
+        else:
+            self.flagged.add((row, col))
+            return {'flagged': True, 'coord': (row, col)}
+
+    def is_dug(self, row, col):
+        return (row, col) in self.dug
+
+    def is_flagged(self, row, col):
+        return (row, col) in self.flagged
+
+    def is_won(self):
+        return len(self.dug) == self.dim_size**2 - self.num_bombs
+
+    def get_cell_value(self, row, col):
+        return self.board[row][col]
+
+    def get_view(self):
+        """Retourne une matrice 2D représentant l'état visible pour l'UI:
+            - ' ' pour non découvert
+            - 'F' pour drapeau
+            - int or '*' pour cases découvertes
+        """
+        view = [[' ' for _ in range(self.dim_size)] for _ in range(self.dim_size)]
+        for r in range(self.dim_size):
+            for c in range(self.dim_size):
+                if (r, c) in self.flagged:
+                    view[r][c] = 'F'
+                elif (r, c) in self.dug:
+                    val = self.board[r][c]
+                    view[r][c] = '*' if val == '*' else val
+                else:
+                    view[r][c] = ' '
+        return view
+
     def __str__(self) -> str:
         # Create a string representation of the board
-        
 
         for row, col in self.dug:
             self.visible_board[row][col] = str(self.board[row][col])
@@ -131,6 +176,7 @@ class Board:
         indices_row += '\n'
 
         return indices_row + string_rep
+
 
 def play(dim_size=10, num_bombs=5):
     #Step 1: create the board and plant the bombs
@@ -153,7 +199,8 @@ def play(dim_size=10, num_bombs=5):
             print("Invalid Location. Try again.")
             continue
 
-        safe = board.dig(row,col)
+        result = board.dig(row,col)
+        safe = result['safe']
 
         if not safe:
             #dug a bomb
@@ -210,5 +257,11 @@ def play(dim_size=10, num_bombs=5):
         board.dug = [(r,c) for r in range(board.dim_size) for c in range(board.dim_size)]
         print(board)
 
+
+def main():
+    from gui import run_gui
+    run_gui()
+
+
 if __name__ == '__main__':
-    play()
+    main()
