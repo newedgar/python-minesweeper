@@ -12,6 +12,10 @@ class MinesweeperGUI:
         self.cells = []
         self.game_active = False
         self.board_frame = None
+        self.mode = 'single'  # 'single' or 'multi'
+        self.current_player = 1
+        self.turn_label = None
+        self.difficulty = 0
         self.show_main_menu()
 
     def show_main_menu(self):
@@ -20,6 +24,10 @@ class MinesweeperGUI:
         self.board = None
         self.cells = []
         self.board_frame = None
+        self.mode = 'single'
+        self.current_player = 1
+        self.turn_label = None
+        self.difficulty = 0
         self.clear_window()
 
         main_frame = tk.Frame(self.root)
@@ -34,7 +42,7 @@ class MinesweeperGUI:
 
         tk.Label(size_frame, text="Board Size:", font=("Arial", 12)).pack(side=tk.LEFT, padx=5)
         self.size_var = tk.IntVar(value=10)
-        for size in [8, 10, 12, 16]:
+        for size in [8, 10, 12, 14]:
             tk.Radiobutton(size_frame, text=str(size), variable=self.size_var, value=size).pack(side=tk.LEFT, padx=5)
 
         # Buttons frame
@@ -43,31 +51,52 @@ class MinesweeperGUI:
 
         tk.Button(
             button_frame,
-            text="Start Game",
-            command=self.start_game,
-            width=15,
+            text="Start Single Player",
+            command=self.start_single_player,
+            width=20,
             height=2,
             font=("Arial", 12),
             bg="#4CAF50",
             fg="white",
-        ).pack(pady=10)
+        ).pack(pady=8)
+
+        tk.Button(
+            button_frame,
+            text="Start Two Players",
+            command=self.start_two_players,
+            width=20,
+            height=2,
+            font=("Arial", 12),
+            bg="#2196F3",
+            fg="white",
+        ).pack(pady=8)
 
         tk.Button(
             button_frame,
             text="Other Game Mode (Coming Soon)",
             command=lambda: messagebox.showinfo("Info", "Coming soon!"),
-            width=15,
+            width=20,
             height=2,
             font=("Arial", 12),
             state=tk.DISABLED,
-        ).pack(pady=10)
+        ).pack(pady=8)
 
-    def start_game(self):
-        """Initialize a new game board with selected size."""
+    def start_single_player(self):
+        self.mode = 'single'
+        self.current_player = 1
+        self._start_game()
+
+    def start_two_players(self):
+        self.mode = 'multi'
+        self.current_player = 1
+        self._start_game()
+
+    def _start_game(self):
+        """Common game start routine."""
         dim_size = self.size_var.get()
-        num_bombs = max(1, round(dim_size ** 2 * 0.12))  # 12% of the board as bombs
-        self.board = Board(dim_size, num_bombs)
+        self.board = Board(dim_size)
         self.game_active = True
+        self.difficulty = self.board.evaluate_difficulty()
         self.show_game_board()
 
     def show_game_board(self):
@@ -101,7 +130,30 @@ class MinesweeperGUI:
                 row_cells.append(cell)
             self.cells.append(row_cells)
 
+        # Turn label at the bottom
+        bottom_frame = tk.Frame(self.root)
+        bottom_frame.pack(pady=8)
+        self.turn_label = tk.Label(bottom_frame, text=self._turn_text(), font=("Arial", 12, "bold"))
+        self.turn_label.pack()
+        self.difficulty_label = tk.Label(bottom_frame, text= "Difficulty : "+str(self.difficulty)+" %", font=("Arial", 12, "bold"))
+        self.difficulty_label.pack()
+
         self.update_board_display()
+
+    def _turn_text(self):
+        if self.mode == 'multi' and self.game_active:
+            return f"Player {self.current_player}'s turn"
+        elif self.mode == 'multi' and not self.game_active:
+            return "Game over"
+        else:
+            return "Single Player"
+
+    def _advance_turn(self):
+        if self.mode != 'multi':
+            return
+        self.current_player = 2 if self.current_player == 1 else 1
+        if self.turn_label:
+            self.turn_label.config(text=self._turn_text())
 
     def on_cell_click(self, row, col):
         """Forward left click to backend and update view from backend response."""
@@ -113,11 +165,25 @@ class MinesweeperGUI:
         # result: { 'safe': bool, 'dug': [...], 'won': bool }
         if not result.get('safe', True):
             # backend already revealed all cells
-            messagebox.showwarning("Game Over", "You hit a bomb! Game Over.")
+            messagebox.showwarning("Game Over", f"Player {self.current_player} hit a bomb! Game Over.")
             self.game_active = False
+            # update view once to reveal bombs
+            self.update_board_display()
+            if self.turn_label:
+                self.turn_label.config(text="Game over")
+            return
         elif result.get('won'):
-            messagebox.showinfo("Victory", "Congratulations! You won!")
+            messagebox.showinfo("Victory", f"Player {self.current_player} wins! Congratulations!")
             self.game_active = False
+            self.update_board_display()
+            if self.turn_label:
+                self.turn_label.config(text="Game over")
+            return
+
+        # If some cells were actually dug, consider it a valid move and advance turn in multi
+        if self.mode == 'multi' and result.get('dug'):
+            if len(result.get('dug')) > 0:
+                self._advance_turn()
 
         self.update_board_display()
 
@@ -126,9 +192,13 @@ class MinesweeperGUI:
         if not self.game_active or self.board is None:
             return
 
+        prev_flagged = self.board.is_flagged(row, col)
         result = self.board.toggle_flag(row, col)
         # result: { 'flagged': bool, 'coord': (r,c) }
-        # no business logic here, UI will reflect backend state
+        # If flag state changed, count as a move in multi
+        if self.mode == 'multi' and result.get('flagged') != prev_flagged:
+            self._advance_turn()
+
         self.update_board_display()
 
     def update_board_display(self):
@@ -139,14 +209,14 @@ class MinesweeperGUI:
         view = self.board.get_view()
 
         number_colors = {
-            1: "blue",
-            2: "green",
-            3: "red",
+            1: "green",
+            2: "blue",
+            3: "orange",
             4: "purple",
-            5: "brown",
-            6: "teal",
+            5: "red",
+            6: "red",
             7: "black",
-            8: "gray",
+            8: "black",
         }
 
         for r in range(self.board.dim_size):
@@ -167,7 +237,12 @@ class MinesweeperGUI:
                 else:
                     # number
                     color = number_colors.get(val, "black")
-                    widget.config(text=str(val), bg="white", fg=color, state=tk.DISABLED, relief=tk.SUNKEN, disabledforeground=color)
+                    display_text = "" if val == 0 else str(val)
+                    widget.config(text=display_text, bg="white", fg=color, state=tk.DISABLED, relief=tk.SUNKEN, disabledforeground=color)
+
+        # update turn label
+        if self.turn_label:
+            self.turn_label.config(text=self._turn_text())
 
     def clear_window(self):
         """Clear all widgets from the window."""

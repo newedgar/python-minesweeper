@@ -3,14 +3,19 @@ import random, re
 
 
 class Board:
-    def __init__(self, dim_size, num_bombs) -> None:
+    def __init__(self, dim_size) -> None:
         self.dim_size = dim_size
-        self.num_bombs = num_bombs
+        self.num_bombs = self.gen_number_bomb()
         self.board = self.make_new_board()
         self.assign_values_to_board()
         self.dug = set()  # it will keep track of dug location like (0,0) etc.
         self.flagged = set()  # it will keep track of flagged bomb locations like (0,0) etc.
         self.visible_board = [[' ' for _ in range(self.dim_size)] for _ in range(self.dim_size)]
+
+    def gen_number_bomb(self):
+        x = self.dim_size
+        base = max(1, 0.5 * x**2 - 7 * x + 30)
+        return int(base + random.randint(1, round(x/2)))
 
     def make_new_board(self):
 
@@ -43,19 +48,6 @@ class Board:
                 self.board[r][c] = self.get_num_neighboring_bombs(r,c)
     
     def get_num_neighboring_bombs(self, row,col):
-        # iterate through each of the neighbouring positions and sum number of bombs
-        # top left: (row-1,col-1)
-        # top middle: (row-1,col)
-        # top right: (row-1,col+1)
-        # left: (row,col-1)
-        # right: (row,col+1)
-        # bottom left: (row+1,col-1)
-        # bottom middle: (row+1,col)
-        # bottom right: (row+1,col+1)
-
-        
-        # min and max will make sure we don't go out of bound
-
         num_neighboring_bombs = 0
         for dr in range(-1, 2):
             for dc in range(-1, 2):
@@ -154,6 +146,105 @@ class Board:
                     view[r][c] = ' '
         return view
 
+    def evaluate_difficulty(self):
+        """Évalue la difficulté d'une grille de mines et renvoie un pourcentage (0-100).
+
+        Le score tient compte de:
+        - la densité de bombes par rapport à la taille de la grille,
+        - le regroupement des bombes,
+        - la proximité moyenne entre bombes,
+        - et surtout une normalisation selon la taille du plateau pour éviter un score quasi constant.
+        """
+        bombs = [(r, c) for r in range(self.dim_size) for c in range(self.dim_size) if self.board[r][c] == '*']
+        bomb_count = len(bombs)
+        total_cells = self.dim_size * self.dim_size
+        if total_cells == 0:
+            return 0
+
+        density = bomb_count / total_cells
+
+        # Taille du plateau -> facteur d'ajustement
+        # petits boards = plus faciles à lire, grands boards = plus difficiles
+        board_size_factor = min(self.dim_size / 16.0, 1.0)
+
+        # Cas limites
+        if bomb_count == 0:
+            return 0
+        if bomb_count == total_cells:
+            return 100
+
+        # Clustering en 8-voisins
+        visited = set()
+        clusters = []
+
+        def neighbors8(rr, cc):
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    if dr == 0 and dc == 0:
+                        continue
+                    nr, nc = rr + dr, cc + dc
+                    if 0 <= nr < self.dim_size and 0 <= nc < self.dim_size:
+                        yield (nr, nc)
+
+        bomb_set = set(bombs)
+        for b in bombs:
+            if b in visited:
+                continue
+            stack = [b]
+            cluster = []
+            while stack:
+                cur = stack.pop()
+                if cur in visited:
+                    continue
+                visited.add(cur)
+                if cur in bomb_set:
+                    cluster.append(cur)
+                    for nb in neighbors8(*cur):
+                        if nb not in visited and nb in bomb_set:
+                            stack.append(nb)
+            clusters.append(cluster)
+
+        cluster_sizes = sorted((len(c) for c in clusters), reverse=True)
+        largest_cluster = cluster_sizes[0] if cluster_sizes else 0
+        largest_cluster_ratio = largest_cluster / bomb_count if bomb_count else 0.0
+
+        # Distance moyenne au plus proche voisin
+        import math
+        if bomb_count <= 1:
+            avg_nn = float('inf')
+        else:
+            total_nn = 0.0
+            for i, (r, c) in enumerate(bombs):
+                min_d = None
+                for j, (r2, c2) in enumerate(bombs):
+                    if i == j:
+                        continue
+                    d = abs(r - r2) + abs(c - c2)
+                    if min_d is None or d < min_d:
+                        min_d = d
+                total_nn += (min_d if min_d is not None else 0)
+            avg_nn = total_nn / bomb_count
+
+        # Normalisation par taille de grille: sur une grande grille, la même densité est moins "serrée"
+        density_target = 0.08 + (0.12 * board_size_factor)  # 8% à 20% selon la taille
+        density_score = min(density / max(density_target, 0.01), 1.0)
+
+        # Grande grille + gros cluster = difficulté plus élevée
+        cluster_score = largest_cluster_ratio
+
+        # Plus les bombes sont proches, plus c'est difficile
+        max_possible = max(self.dim_size, 1)
+        nn_score = 1.0 - min(avg_nn / max_possible, 1.0) if not math.isinf(avg_nn) else 0.0
+
+        # Ajustement global par taille du plateau
+        # petit board -> score un peu réduit; grand board -> score un peu augmenté
+        size_boost = 0.75 + (0.5 * board_size_factor)  # 0.75 .. 1.25
+
+        score = (0.45 * density_score + 0.35 * cluster_score + 0.20 * nn_score) * size_boost
+        score = max(0.0, min(1.0, score))
+
+        return int(round(score * 100))
+
     def __str__(self) -> str:
         # Create a string representation of the board
 
@@ -176,6 +267,15 @@ class Board:
         indices_row += '\n'
 
         return indices_row + string_rep
+
+
+def bomb_count_for_size(dim_size):
+    """Retourne un nombre de bombes simple basé sur la taille du plateau.
+
+    La formule prend une base liée à la taille de la grille et ajoute un aléatoire entre 1 et 6.
+    """
+    base = max(1, dim_size // 2)
+    return base + random.randint(1, 6)
 
 
 def play(dim_size=10, num_bombs=5):
