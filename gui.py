@@ -110,6 +110,16 @@ class MinesweeperGUI:
         tk.Label(header_frame, text=f"Bombs to mark: {self.board.num_bombs}", font=("Arial", 12)).pack(side=tk.LEFT, padx=20)
         tk.Button(header_frame, text="Back to Menu", command=self.show_main_menu).pack(side=tk.LEFT, padx=20)
 
+        tk.Button(
+            header_frame,
+            text="Hint",
+            command=self.on_hint_click,
+            width=10,
+            font=("Arial", 12),
+            bg="#FFC107",
+            fg="black",
+        ).pack(side=tk.LEFT, padx=20)
+
         self.board_frame = tk.Frame(self.root)
         self.board_frame.pack()
 
@@ -197,6 +207,53 @@ class MinesweeperGUI:
         # result: { 'flagged': bool, 'coord': (r,c) }
         # If flag state changed, count as a move in multi
         if self.mode == 'multi' and result.get('flagged') != prev_flagged:
+            self._advance_turn()
+
+        self.update_board_display()
+
+    def on_hint_click(self):
+        """
+        Ask the bot to make exactly one move, then update the display.
+        """
+        if not self.game_active or self.board is None:
+            return
+
+        result = self.board.hint()
+
+        if not result.get("moved"):
+            messagebox.showinfo(
+                "Hint",
+                "No safe logical move found."
+            )
+            return
+
+        if not result.get("safe", True):
+            messagebox.showwarning(
+                "Game Over",
+                "The bot hit a bomb! Game Over."
+            )
+            self.game_active = False
+            self.update_board_display()
+
+            if self.turn_label:
+                self.turn_label.config(text="Game over")
+
+            return
+
+        if result.get("won"):
+            messagebox.showinfo(
+                "Victory",
+                "The bot found the winning move!"
+            )
+            self.game_active = False
+            self.update_board_display()
+
+            if self.turn_label:
+                self.turn_label.config(text="Game over")
+
+            return
+
+        if self.mode == "multi":
             self._advance_turn()
 
         self.update_board_display()
