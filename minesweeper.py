@@ -71,6 +71,10 @@ class Board:
         if (row, col) in self.dug:
             return {'safe': True, 'dug': [], 'won': self.is_won()}
 
+        # If flagged, nothing to do
+        if (row, col) in self.flagged:
+            return {'safe': True, 'dug': [], 'won': self.is_won()}
+
         # If bomb
         if self.board[row][col] == '*':
             # reveal everything
@@ -127,6 +131,125 @@ class Board:
 
     def get_cell_value(self, row, col):
         return self.board[row][col]
+
+    def get_neighbors(self, row, col):
+        """
+        Return all valid neighboring cells around (row, col).
+        """
+        neighbors = []
+
+        for dr in range(-1, 2):
+            for dc in range(-1, 2):
+                if dr == 0 and dc == 0:
+                    continue
+
+                nr = row + dr
+                nc = col + dc
+
+                if 0 <= nr < self.dim_size and 0 <= nc < self.dim_size:
+                    neighbors.append((nr, nc))
+
+        return neighbors
+
+    def get_hidden_neighbors(self, row, col):
+        """
+        Return neighbors that are not dug and not flagged.
+        """
+        hidden_neighbors = []
+
+        for nr, nc in self.get_neighbors(row, col):
+            if (nr, nc) not in self.dug and (nr, nc) not in self.flagged:
+                hidden_neighbors.append((nr, nc))
+
+        return hidden_neighbors
+
+    def get_flagged_neighbors(self, row, col):
+        """
+        Return neighbors that are flagged.
+        """
+        flagged_neighbors = []
+
+        for nr, nc in self.get_neighbors(row, col):
+            if (nr, nc) in self.flagged:
+                flagged_neighbors.append((nr, nc))
+
+        return flagged_neighbors
+
+    def apply_basic_bot_strategy(self, row, col):
+        """
+        Apply one basic Minesweeper deduction from one revealed numbered cell.
+
+        Returns:
+            dict: Information about whether a move was made.
+        """
+        if (row, col) not in self.dug:
+            return {"moved": False, "action": None, "safe": True, "won": self.is_won()}
+
+        cell_value = self.board[row][col]
+
+        if cell_value == '*' or cell_value == 0:
+            return {"moved": False, "action": None, "safe": True, "won": self.is_won()}
+
+        hidden_neighbors = self.get_hidden_neighbors(row, col)
+        flagged_neighbors = self.get_flagged_neighbors(row, col)
+
+        remaining_bombs = cell_value - len(flagged_neighbors)
+
+        # Rule 1:
+        # If all bombs around this cell are already flagged,
+        # one hidden neighbor is safe to dig.
+        if remaining_bombs == 0 and hidden_neighbors:
+            nr, nc = hidden_neighbors[0]
+            result = self.dig(nr, nc)
+
+            return {
+                "moved": True,
+                "action": "dig",
+                "coord": (nr, nc),
+                "safe": result.get("safe", True),
+                "won": result.get("won", False),
+            }
+
+        # Rule 2:
+        # If all hidden neighbors must be bombs,
+        # flag one hidden neighbor.
+        if remaining_bombs == len(hidden_neighbors) and hidden_neighbors:
+            nr, nc = hidden_neighbors[0]
+            result = self.toggle_flag(nr, nc)
+
+            return {
+                "moved": True,
+                "action": "flag",
+                "coord": (nr, nc),
+                "safe": True,
+                "won": self.is_won(),
+                "flagged": result.get("flagged", False),
+            }
+
+        return {"moved": False, "action": None, "safe": True, "won": self.is_won()}
+
+    def hint(self):
+        """
+        Make exactly one basic bot move.
+
+        Returns:
+            dict: Result of the hint move.
+        """
+        for row, col in list(self.dug):
+            cell_value = self.board[row][col]
+
+            if cell_value != '*' and cell_value > 0:
+                result = self.apply_basic_bot_strategy(row, col)
+
+                if result.get("moved"):
+                    return result
+
+        return {
+            "moved": False,
+            "action": None,
+            "safe": True,
+            "won": self.is_won(),
+        }
 
     def get_view(self):
         """Retourne une matrice 2D représentant l'état visible pour l'UI:
@@ -278,6 +401,22 @@ def bomb_count_for_size(dim_size):
     return base + random.randint(1, 6)
 
 
+
+
+def solve_basic_bot(self):
+    """
+    Keep applying basic bot moves until no more progress can be made.
+
+    Returns:
+        bool: True if the board is solved, False otherwise.
+    """
+    made_progress = True
+
+    while made_progress and not self.is_won():
+        made_progress = self.hint()
+
+    return self.is_won()
+
 def play(dim_size=10, num_bombs=5):
     #Step 1: create the board and plant the bombs
     board = Board(dim_size,num_bombs)
@@ -339,11 +478,11 @@ def play(dim_size=10, num_bombs=5):
                 break
             board.dug.add((row,col))
             bombs_marked+=1
-            
-            
-            print("Bombs left = " + str(num_bombs-bombs_marked))
+
+
+            print("Bombs left = " + str(board.num_bombs - len(board.flagged)))
             print(board)
-        
+
         if not safe:
             #dug a bomb
             break # game over
