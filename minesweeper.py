@@ -12,6 +12,9 @@ class Board:
         self.flagged = set()  # it will keep track of flagged bomb locations like (0,0) etc.
         self.visible_board = [[' ' for _ in range(self.dim_size)] for _ in range(self.dim_size)]
 
+    def get_remaining_bomb(self):
+        return  max(0, self.num_bombs - len(self.flagged))
+
     def gen_number_bomb(self):
         x = self.dim_size
         base = max(1, 0.5 * x**2 - 7 * x + 30)

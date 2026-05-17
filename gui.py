@@ -17,6 +17,7 @@ class MinesweeperGUI:
         self.turn_label = None
         self.difficulty = 0
         self.show_main_menu()
+        self.remaining_bomb= None
 
     def show_main_menu(self):
         """Display the main menu with size selector and game mode buttons."""
@@ -29,6 +30,7 @@ class MinesweeperGUI:
         self.turn_label = None
         self.difficulty = 0
         self.clear_window()
+        self.remaining_bomb = None
 
         main_frame = tk.Frame(self.root)
         main_frame.pack(expand=True)
@@ -71,15 +73,6 @@ class MinesweeperGUI:
             fg="white",
         ).pack(pady=8)
 
-        tk.Button(
-            button_frame,
-            text="Other Game Mode (Coming Soon)",
-            command=lambda: messagebox.showinfo("Info", "Coming soon!"),
-            width=20,
-            height=2,
-            font=("Arial", 12),
-            state=tk.DISABLED,
-        ).pack(pady=8)
 
     def start_single_player(self):
         self.mode = 'single'
@@ -107,7 +100,9 @@ class MinesweeperGUI:
         header_frame = tk.Frame(self.root)
         header_frame.pack(pady=10)
 
-        tk.Label(header_frame, text=f"Bombs to mark: {self.board.num_bombs}", font=("Arial", 12)).pack(side=tk.LEFT, padx=20)
+        self.remaining_bomb = tk.Label(header_frame, text=f"Bombs to mark: {self.board.get_remaining_bomb()}", font=("Arial", 12))
+        self.remaining_bomb.pack(side=tk.LEFT, padx=20)
+
         tk.Button(header_frame, text="Back to Menu", command=self.show_main_menu).pack(side=tk.LEFT, padx=20)
 
         tk.Button(
@@ -160,6 +155,7 @@ class MinesweeperGUI:
 
         self.update_board_display()
 
+
     def _turn_text(self):
         if self.mode == 'multi' and self.game_active:
             return f"Player {self.current_player}'s turn"
@@ -174,6 +170,10 @@ class MinesweeperGUI:
         self.current_player = 2 if self.current_player == 1 else 1
         if self.turn_label:
             self.turn_label.config(text=self._turn_text())
+
+    def _update_remaining_bomb_label(self):
+        if self.remaining_bomb and self.board:
+            self.remaining_bomb.config(text=f"Bombs to mark: {self.board.get_remaining_bomb()}")
 
     def on_cell_click(self, row, col):
         """Forward left click to backend and update view from backend response."""
@@ -335,6 +335,7 @@ class MinesweeperGUI:
         # update turn label
         if self.turn_label:
             self.turn_label.config(text=self._turn_text())
+        self._update_remaining_bomb_label()
 
     def clear_window(self):
         """Clear all widgets from the window."""
