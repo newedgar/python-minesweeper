@@ -368,6 +368,23 @@ class Board:
 
         return int(round(score * 100))
 
+    def solve_basic_bot(self):
+        """
+        Keep applying basic bot moves until no more progress can be made.
+
+        Returns:
+            bool: True if the board is solved, False otherwise.
+        """
+        result = {
+            "moved": True,
+            "safe": True,
+            "won": self.is_won()
+        }
+
+        while result.get("moved") and result.get("safe") and not self.is_won():
+            result = self.hint()
+
+        return self.is_won()
     def __str__(self) -> str:
         # Create a string representation of the board
 
@@ -403,19 +420,6 @@ def bomb_count_for_size(dim_size):
 
 
 
-def solve_basic_bot(self):
-    """
-    Keep applying basic bot moves until no more progress can be made.
-
-    Returns:
-        bool: True if the board is solved, False otherwise.
-    """
-    made_progress = True
-
-    while made_progress and not self.is_won():
-        made_progress = self.hint()
-
-    return self.is_won()
 
 def play(dim_size=10, num_bombs=5):
     #Step 1: create the board and plant the bombs
