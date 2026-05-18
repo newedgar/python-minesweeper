@@ -24,7 +24,7 @@ class Board:
 
         board = [[None for _ in range(self.dim_size)] for _ in range(self.dim_size)]
 
-        #plant the bombs
+        # plant the bombs
         bombs_planted = 0
 
         while bombs_planted < self.num_bombs:
@@ -33,7 +33,7 @@ class Board:
             col = loc % self.dim_size
 
             if board[row][col] == '*':
-                #this means we've already planted the boms at this location so keep going
+                # this means we've already planted the bombs at this location so keep going
                 continue
 
             board[row][col] = '*' # plant the bomb
@@ -46,7 +46,7 @@ class Board:
         for r in range(self.dim_size):
             for c in range(self.dim_size):
                 if self.board[r][c] == '*':
-                    # if this ia already a bomb, we don't want to calculate anything
+                    # if this is already a bomb, we don't want to calculate anything
                     continue
                 self.board[r][c] = self.get_num_neighboring_bombs(r,c)
     
@@ -62,9 +62,9 @@ class Board:
         return num_neighboring_bombs
 
     def dig(self, row, col):
-        """Dig at (row,col). Retourne un dict:
+        """Dig at (row,col). Returns a dict:
             { 'safe': bool, 'dug': [(r,c),...], 'won': bool }
-        Si une bombe est touchée, 'safe' sera False et 'dug' contiendra toutes les cases révélées pour affichage.
+        If a bomb is hit, 'safe' will be False and 'dug' will contain all cells revealed for display.
         """
         # validate coords
         if row < 0 or row >= self.dim_size or col < 0 or col >= self.dim_size:
@@ -111,7 +111,7 @@ class Board:
         return {'safe': True, 'dug': newly_dug, 'won': won}
 
     def toggle_flag(self, row, col):
-        """Toggle flag. Retourne dict: { 'flagged': bool, 'coord': (row,col) }"""
+        """Toggle flag. Returns dict: { 'flagged': bool, 'coord': (row,col) }"""
         if row < 0 or row >= self.dim_size or col < 0 or col >= self.dim_size:
             return {'flagged': False, 'coord': (row, col)}
         if (row, col) in self.dug:
@@ -255,10 +255,10 @@ class Board:
         }
 
     def get_view(self):
-        """Retourne une matrice 2D représentant l'état visible pour l'UI:
-            - ' ' pour non découvert
-            - 'F' pour drapeau
-            - int or '*' pour cases découvertes
+        """Return a 2D matrix representing the visible state for the UI:
+            - ' ' for undiscovered
+            - 'F' for flagged
+            - int or '*' for discovered cells
         """
         view = [[' ' for _ in range(self.dim_size)] for _ in range(self.dim_size)]
         for r in range(self.dim_size):
@@ -273,13 +273,13 @@ class Board:
         return view
 
     def evaluate_difficulty(self):
-        """Évalue la difficulté d'une grille de mines et renvoie un pourcentage (0-100).
+        """Evaluate the difficulty of a minefield and return a percentage (0-100).
 
-        Le score tient compte de:
-        - la densité de bombes par rapport à la taille de la grille,
-        - le regroupement des bombes,
-        - la proximité moyenne entre bombes,
-        - et surtout une normalisation selon la taille du plateau pour éviter un score quasi constant.
+        The score takes into account:
+        - bomb density relative to the board size,
+        - bomb clustering,
+        - average proximity between bombs,
+        - and a normalization based on board size to avoid near-constant scores.
         """
         bombs = [(r, c) for r in range(self.dim_size) for c in range(self.dim_size) if self.board[r][c] == '*']
         bomb_count = len(bombs)
@@ -289,17 +289,17 @@ class Board:
 
         density = bomb_count / total_cells
 
-        # Taille du plateau -> facteur d'ajustement
-        # petits boards = plus faciles à lire, grands boards = plus difficiles
+        # Board size -> adjustment factor
+        # small boards are easier to reason about, large boards become harder
         board_size_factor = min(self.dim_size / 16.0, 1.0)
 
-        # Cas limites
+        # Edge cases
         if bomb_count == 0:
             return 0
         if bomb_count == total_cells:
             return 100
 
-        # Clustering en 8-voisins
+        # 8-neighbour clustering
         visited = set()
         clusters = []
 
@@ -334,7 +334,7 @@ class Board:
         largest_cluster = cluster_sizes[0] if cluster_sizes else 0
         largest_cluster_ratio = largest_cluster / bomb_count if bomb_count else 0.0
 
-        # Distance moyenne au plus proche voisin
+        # Average distance to nearest neighbor
         import math
         if bomb_count <= 1:
             avg_nn = float('inf')
@@ -351,19 +351,18 @@ class Board:
                 total_nn += (min_d if min_d is not None else 0)
             avg_nn = total_nn / bomb_count
 
-        # Normalisation par taille de grille: sur une grande grille, la même densité est moins "serrée"
-        density_target = 0.08 + (0.12 * board_size_factor)  # 8% à 20% selon la taille
+        # Normalization by board size: on a large board the same density feels less "tight"
+        density_target = 0.08 + (0.12 * board_size_factor)  # 8% to 20% depending on size
         density_score = min(density / max(density_target, 0.01), 1.0)
 
-        # Grande grille + gros cluster = difficulté plus élevée
+        # Large board + large cluster => higher difficulty
         cluster_score = largest_cluster_ratio
 
-        # Plus les bombes sont proches, plus c'est difficile
+        # The closer bombs are, the harder the board
         max_possible = max(self.dim_size, 1)
         nn_score = 1.0 - min(avg_nn / max_possible, 1.0) if not math.isinf(avg_nn) else 0.0
 
-        # Ajustement global par taille du plateau
-        # petit board -> score un peu réduit; grand board -> score un peu augmenté
+        # Global size adjustment: small boards slightly reduced, big boards slightly increased
         size_boost = 0.75 + (0.5 * board_size_factor)  # 0.75 .. 1.25
 
         score = (0.45 * density_score + 0.35 * cluster_score + 0.20 * nn_score) * size_boost
@@ -410,13 +409,12 @@ class Board:
 
 
 def bomb_count_for_size(dim_size):
-    """Retourne un nombre de bombes simple basé sur la taille du plateau.
+    """Return a simple bomb count based on board size.
 
-    La formule prend une base liée à la taille de la grille et ajoute un aléatoire entre 1 et 6.
+    The formula takes a base related to the board size and adds a random value between 1 and 6.
     """
     base = max(1, dim_size // 2)
     return base + random.randint(1, 6)
-
 
 
 
