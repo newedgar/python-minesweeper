@@ -394,6 +394,20 @@ class Board:
 
         return indices_row + string_rep
 
+    def solve_basic_bot(self):
+        """
+        Keep applying basic bot moves until no more progress can be made.
+
+        Returns:
+            bool: True if the board is solved, False otherwise.
+        """
+        made_progress = True
+
+        while made_progress and not self.is_won():
+            made_progress = self.hint()
+
+        return self.is_won()
+
 
 def bomb_count_for_size(dim_size):
     """Retourne un nombre de bombes simple basé sur la taille du plateau.
@@ -406,19 +420,6 @@ def bomb_count_for_size(dim_size):
 
 
 
-def solve_basic_bot(self):
-    """
-    Keep applying basic bot moves until no more progress can be made.
-
-    Returns:
-        bool: True if the board is solved, False otherwise.
-    """
-    made_progress = True
-
-    while made_progress and not self.is_won():
-        made_progress = self.hint()
-
-    return self.is_won()
 
 def play(dim_size=10, num_bombs=5):
     #Step 1: create the board and plant the bombs
